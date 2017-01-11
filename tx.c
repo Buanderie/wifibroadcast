@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include <time.h>
+#include <sys/resource.h>
 
 #include "fec.h"
 
@@ -43,11 +44,29 @@ static const u8 u8aRadiotapHeader[] = {
 
 	0x00, 0x00, // <-- radiotap version
 	0x0c, 0x00, // <- radiotap header lengt
-	0x04, 0x80, 0x00, 0x00, // <-- bitmap
-	0x22, 
-	0x0, 
-	0x18, 0x00 
+	0x04, 0x80, 0x00, 0x00, // <-- radiotap present flags
+#if RADIO_RATE == 6
+	0x0c, // datarate 6Mbit
+#elif RADIO_RATE == 12
+	0x18, // datarate 12Mbit
+#elif RADIO_RATE == 18
+	0x24, // datarate 18Mbit
+#elif RADIO_RATE == 24
+	0x30, // datarate 24Mbit
+#elif RADIO_RATE == 36
+	0x48, // datarate 36Mbit
+#elif RADIO_RATE == 48
+	0x60, // datarate 48Mbit
+#else
+#error "Radio rate is not defined"
+#endif
+	0x0,
+	0x18, 0x00
 };
+
+
+
+
 
 /* Penumbra IEEE80211 header */
 
@@ -72,25 +91,24 @@ int flagHelp = 0;
 void
 usage(void)
 {
-	printf(
-	    "(c)2015 befinitiv. Based on packetspammer by Andy Green.  Licensed under GPL2\n"
-	    "\n"
-	    "Usage: tx [options] <interface>\n\nOptions\n"
-	    "-r <count> Number of FEC packets per block (default 4). Needs to match with rx.\n\n"
-	    "-f <bytes> Number of bytes per packet (default %d. max %d). This is also the FEC block size. Needs to match with rx\n"
-			"-p <port> Port number 0-255 (default 0)\n"
-			"-b <count> Number of data packets in a block (default 8). Needs to match with rx.\n"
-			"-x <count> Number of transmissions of a block (default 1)\n"
-			"-m <bytes> Minimum number of bytes per frame (default: 0)\n"
-			"-s <stream> If <stream> is > 1 then the parameter changes \"tx\" input from stdin to named fifos. Each fifo transports a stream over a different port (starting at -p port and incrementing). Fifo names are \"%s\". (default 1)\n"
-	    "Example:\n"
-	    "  iwconfig wlan0 down\n"
-	    "  iw dev wlan0 set monitor otherbss fcsfail\n"
-	    "  ifconfig wlan0 up\n"
-			"  iwconfig wlan0 channel 13\n"
-	    "  tx wlan0        Reads data over stdin and sends it out over wlan0\n"
-	    "\n", MAX_USER_PACKET_LENGTH, MAX_USER_PACKET_LENGTH, FIFO_NAME);
-	exit(1);
+    printf(
+        "tx (c)2015 befinitiv. Based on packetspammer by Andy Green. Licensed under GPL2\n"
+        "\n"
+        "Usage: tx [options] <interface>\n"
+        "\n"
+        "Options:\n"
+        "-b <count>  Number of data packets in a block (default 8). Needs to match with rx.\n"
+        "-r <count>  Number of FEC packets per block (default 4). Needs to match with rx.\n"
+        "-f <bytes>  Number of bytes per packet (default %d, max. %d). This is also the FEC block size. Needs to match with rx.\n"
+        "-m <bytes>  Minimum number of bytes per frame (default: 0)\n"
+        "-p <port>   Port number 0-255 (default 0)\n"
+        "-s <stream> If <stream> is > 1 then the parameter changes \"tx\" input from stdin to named FIFOs. Each fifo transports\n"
+        "            a stream over a different port (starting at -p port and incrementing). FIFO names are \"%s\". (default 1)\n"
+        "\n"
+        "Example:\n"
+        "  cat /dev/zero | tx -b 8 -r 4 -f 1024 wlan0 (reads zeros from stdin and sends them out on wlan0)\n"
+        "\n", 1024, MAX_USER_PACKET_LENGTH, FIFO_NAME);
+    exit(1);
 }
 
 void set_port_no(uint8_t *pu, uint8_t port) {
@@ -115,7 +133,7 @@ int packet_header_init(uint8_t *packet_header) {
 			pu8 += sizeof(u8aRadiotapHeader);
 			memcpy(pu8, u8aIeeeHeader, sizeof (u8aIeeeHeader));
 			pu8 += sizeof (u8aIeeeHeader);
-					
+
 			//determine the length of the header
 			return pu8 - packet_header;
 }
@@ -271,26 +289,29 @@ void pb_transmit_block(packet_buffer_t *pbl, pcap_t *ppcap, int *seq_nr, int por
 int
 main(int argc, char *argv[])
 {
+
+	setpriority(PRIO_PROCESS, 0, -10);
+
+
 	char szErrbuf[PCAP_ERRBUF_SIZE];
 	int i;
 	pcap_t *ppcap = NULL;
 	char fBrokenSocket = 0;
 	int pcnt = 0;
 	time_t start_time;
-    uint8_t packet_transmit_buffer[MAX_PACKET_LENGTH];
+	uint8_t packet_transmit_buffer[MAX_PACKET_LENGTH];
 	size_t packet_header_length = 0;
 	fd_set fifo_set;
 	int max_fifo_fd = -1;
 	fifo_t fifo[MAX_FIFOS];
 
-		int param_transmission_count = 1;
-    int param_data_packets_per_block = 8;
-    int param_fec_packets_per_block = 4;
-	int param_packet_length = MAX_USER_PACKET_LENGTH;
+	int param_transmission_count = 1;
+        int param_data_packets_per_block = 8;
+	int param_fec_packets_per_block = 4;
+	int param_packet_length = 1024;
 	int param_port = 0;
 	int param_min_packet_length = 0;
 	int param_fifo_count = 1;
-
 
 
 	printf("Raw data transmitter (c) 2015 befinitiv  GPL2\n");
@@ -341,6 +362,7 @@ main(int argc, char *argv[])
 			param_transmission_count = atoi(optarg);
 			break;
 
+
 		default:
 			fprintf(stderr, "unknown switch %c\n", c);
 			usage();
@@ -384,8 +406,10 @@ main(int argc, char *argv[])
 
 
 	// open the interface in pcap
+	// disable promisc mode
+	// set snaplen to 100
 	szErrbuf[0] = '\0';
-	ppcap = pcap_open_live(argv[optind], 800, 1, 20, szErrbuf);
+	ppcap = pcap_open_live(argv[optind], 100, 0, 20, szErrbuf);
 	if (ppcap == NULL) {
 		fprintf(stderr, "Unable to open interface %s in pcap: %s\n",
 		    argv[optind], szErrbuf);
@@ -465,7 +489,8 @@ main(int argc, char *argv[])
 
 
 		if(pcnt % 128 == 0) {
-			printf("%d data packets sent (interface rate: %.3f)\n", pcnt, 1.0 * pcnt / param_data_packets_per_block * (param_data_packets_per_block + param_fec_packets_per_block) / (time(NULL) - start_time));
+//			printf("%d data packets sent (interface rate: %.3f)\n", pcnt, 1.0 * pcnt / param_data_packets_per_block * (param_data_packets_per_block + param_fec_packets_per_block) / (time(NULL) - start_time));
+			printf("%d data packets sent\r", pcnt);
 		}
 
 	}

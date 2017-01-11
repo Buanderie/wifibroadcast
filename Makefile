@@ -1,6 +1,6 @@
 
 LDFLAGS=-lrt -lpcap
-CPPFLAGS=-Wall
+CPPFLAGS=-Wall -DRADIO_RATE=24
 
 all: rx tx rx_status_test
 
