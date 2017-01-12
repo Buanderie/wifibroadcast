@@ -22,5 +22,5 @@ rx_status_test: rx_status_test.o
 	gcc -o $@ $^ $(LDFLAGS)
 
 clean:
-	rm -f rx tx *~ *.o
+	rm -f rx tx rx_status_test *~ *.o
 
