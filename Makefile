@@ -1,26 +1,23 @@
 
 LDFLAGS=-lrt -lpcap
-CPPFLAGS=-Wall -DRADIO_RATE=24
+CPPFLAGS=-Wall 
 
-all: rx tx rx_status_test
+all: rx tx
 
-
-
-%.o: %.c
+%.o: %.c *.h
 	gcc -c -o $@ $< $(CPPFLAGS)
 
+%.o: %.cpp *.hpp *.h
+	g++ -std=c++11 -c -o $@ $< $(CPPFLAGS)
 
-rx: rx.o lib.o radiotap.o fec.o
-	gcc -o $@ $^ $(LDFLAGS)
-
-
-tx: tx.o lib.o fec.o
-	gcc -o $@ $^ $(LDFLAGS)
+rx: rx.o radiotap.o fec.o
+	g++ -o $@ $^ $(LDFLAGS)
 
 
-rx_status_test: rx_status_test.o
-	gcc -o $@ $^ $(LDFLAGS)
+tx: tx.o fec.o
+	g++ -o $@ $^ $(LDFLAGS)
+
 
 clean:
-	rm -f rx tx rx_status_test *~ *.o
+	rm -f rx tx *~ *.o
 
